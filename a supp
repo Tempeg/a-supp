@@ -1,51 +1,49 @@
 for k1=1:length(time)    
   
-    % Step 1
-    %****************************************
-    % Quaternion form related to acceleration
-    %****************************************
+    % Step 1: Mettre les mesures sous forme de quaternion (vecteur pur)
     ab=[0;abx(k1);aby(k1);abz(k1)];
-    %******************************************
-    % Quaternion form related to magnetic field
-    %******************************************
     mb=[0;mbx(k1);mby(k1);mbz(k1)];
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Second loop to run the Iterated Least Squares
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    for i=1:10  % I choose 10 as number of iterations
-    % Step 3 
-    % Estimated magnetic field in fixed frame
-    aux1=product_quaternion(q_chapeau,mb);
-    q_chapeau_conjugate=[q_chapeau(1);-q_chapeau(2);-q_chapeau(3);-q_chapeau(4)];
-    mn_chapeau=product_quaternion(aux1,q_chapeau_conjugate);
-    % Step 4
-    % Estimated acceleration in fixed frame
-    aux2=product_quaternion(q_chapeau,ab);
-    an_chapeau=product_quaternion(aux2,q_chapeau_conjugate);
-    % Step 5: Calculate error on magnetic field
-    delta_mn_chapeau=[mn(1)-mn_chapeau(1);mn(2)-mn_chapeau(2);mn(3)-mn_chapeau(3);mn(4)-mn_chapeau(4)];
-    delta_mn_chapeau=[delta_mn_chapeau(2);delta_mn_chapeau(3);delta_mn_chapeau(4)];
-    % Step 6: Calculate error on acceleration
-    delta_an_chapeau=[an(1)-an_chapeau(1);an(2)-an_chapeau(2);an(3)-an_chapeau(3);an(4)-an_chapeau(4)];
-    delta_an_chapeau=[delta_an_chapeau(2);delta_an_chapeau(3);delta_an_chapeau(4)];
-    % Step 7: Calculate the measurement error vector
-    z=[delta_mn_chapeau;delta_an_chapeau];
-    % Step 8: calculate observation matrix H
-    % First calculate cross product matrix based on real fixed vectors
-    mnx=[0 -mn(4) mn(3);mn(4) 0 -mn(2);-mn(3) mn(2) 0];
-    anx=[0 -an(4) an(3);an(4) 0 -an(2);-an(3) an(2) 0];
-    H=[-2*mnx;-2*anx];
-    % Step 9: Calculate pseudo-inverse
-    H_pseudo_inverse=inv(H'*H)*H';
-    % Step 10: Compute the quaternion error
-    q_e=alpha*H_pseudo_inverse*z;
-    q_e=[1;q_e(1);q_e(2);q_e(3)];
-    % Step 11: Update the quaternion estimate
-    q_chapeau=product_quaternion(q_e,q_chapeau);
-    % Normalization of quaternion to obtain unit quaternion
-    q_chapeau=q_chapeau*(1/norm(q_chapeau));
+    
+    % Boucle ILS (itérations pour la convergence)
+    for i=1:10  % 10 itérations par point de mesure
+        % Step 3: Estimer le champ magnétique dans le repère fixe
+        aux1=product_quaternion(q_chapeau,mb);
+        q_chapeau_conjugate=[q_chapeau(1);-q_chapeau(2);-q_chapeau(3);-q_chapeau(4)];
+        mn_chapeau=product_quaternion(aux1,q_chapeau_conjugate);
+        
+        % Step 4: Estimer l'accélération dans le repère fixe
+        aux2=product_quaternion(q_chapeau,ab);
+        an_chapeau=product_quaternion(aux2,q_chapeau_conjugate);
+        
+        % Step 5: Calculer l'erreur sur le champ magnétique (partie vectorielle)
+        delta_mn_chapeau=[mn(1)-mn_chapeau(1);mn(2)-mn_chapeau(2);mn(3)-mn_chapeau(3);mn(4)-mn_chapeau(4)];
+        delta_mn_chapeau=[delta_mn_chapeau(2);delta_mn_chapeau(3);delta_mn_chapeau(4)];
+        
+        % Step 6: Calculer l'erreur sur l'accélération (partie vectorielle)
+        delta_an_chapeau=[an(1)-an_chapeau(1);an(2)-an_chapeau(2);an(3)-an_chapeau(3);an(4)-an_chapeau(4)];
+        delta_an_chapeau=[delta_an_chapeau(2);delta_an_chapeau(3);delta_an_chapeau(4)];
+        
+        % Step 7: Vecteur d'erreur de mesure
+        z=[delta_mn_chapeau;delta_an_chapeau];
+        
+        % Step 8: Matrice d'observation H
+        mnx=[0 -mn(4) mn(3);mn(4) 0 -mn(2);-mn(3) mn(2) 0];
+        anx=[0 -an(4) an(3);an(4) 0 -an(2);-an(3) an(2) 0];
+        H=[-2*mnx;-2*anx];
+        
+        % Step 9: Pseudo-inverse
+        H_pseudo_inverse=inv(H'*H)*H';
+        
+        % Step 10: Calculer l'erreur de quaternion
+        q_e=alpha*H_pseudo_inverse*z;
+        q_e=[1;q_e(1);q_e(2);q_e(3)];
+        
+        % Step 11: Mettre à jour l'estimation du quaternion
+        q_chapeau=product_quaternion(q_e,q_chapeau);
+        q_chapeau=q_chapeau*(1/norm(q_chapeau)); % Normalisation
     end
-    % Step 12: Quaternion value after convergence
+    
+    % Step 12: Stocker la valeur convergée pour cet instant k1
     q0(k1)=q_chapeau(1);
     q1(k1)=q_chapeau(2);
     q2(k1)=q_chapeau(3);
