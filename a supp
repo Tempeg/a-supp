@@ -1,34 +1,3 @@
-clear all;close all;clc
-
-mn=[0;0.5*cos(60*pi/180);0;0.5*sin(60*pi/180)];     % Magnetic field in fixed frame
-an=[0;0;0;9.8];                                     % Gravity in fixed frame
-alpha=1/3;                                          % Constant to fix the convergence of algorithm    
-
-%%%%%%%%%%%%%%%%%%%%%%%
-% Measurements from IMU
-%%%%%%%%%%%%%%%%%%%%%%%
-M=dlmread('Z:\Cours E3\3A ASI\Mobile Robotics\ILS\ILS-algorithm\ILS algorithm\MT_cal_00302440_000.log','\t',0,1);
-% Output of accelerometer
-abx=M(:,1);
-aby=M(:,2);
-abz=M(:,3);
-% Output of magnetometer
-mbx=M(:,7);
-mby=M(:,8);
-mbz=M(:,9);
-% Reference quaternion  
-M=dlmread('Z:\Cours E3\3A ASI\Mobile Robotics\ILS\ILS-algorithm\ILS algorithm\MT_quat_00302440_000.log','\t',0,0);
-time=M(:,1);
-q0ref=M(:,2);
-q1ref=M(:,3);
-q2ref=M(:,4);
-q3ref=M(:,5);
-
-% Initial conditions
-q_chapeau=[1;0;0;0];  % Estimated quaternion
-qe=[1;0;0;0];         % Quaternion error
-
-% First loop to modify the measurements
 for k1=1:length(time)    
   
     % Step 1
@@ -82,29 +51,3 @@ for k1=1:length(time)
     q2(k1)=q_chapeau(3);
     q3(k1)=q_chapeau(4); 
 end
-
-% Representation of reference and estimated attitude
-figure
-subplot(4,1,1)
-plot(time,q0ref,'r',time,q0,'b')
-axis([0 51.02 -1 1]) 
-ylabel('q_{0}');
-legend('Reference value','Estimated value by ILS')
-title('Quaternion determination by Iterated Least Squares')
-grid
-subplot(4,1,2)
-plot(time,q1ref,'r',time,q1,'b')
-axis([0 51.02 -1 1])
-ylabel('q_{1}');
-grid
-subplot(4,1,3)
-plot(time,q2ref,'r',time,q2,'b')
-axis([0 51.02 -1 1])
-ylabel('q_{2}');
-grid
-subplot(4,1,4)
-plot(time,q3ref,'r',time,q3,'b')
-axis([0 51.02 -1 1]) 
-ylabel('q_{3}');
-xlabel('Time (sec)');
-grid
