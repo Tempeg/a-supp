@@ -1,110 +1,136 @@
-clear all;close all;clc
+clear all;
+close all;
+clc;
 
-mn=[0;0.5*cos(60*pi/180);0;0.5*sin(60*pi/180)];     % Magnetic field in fixed frame
-an=[0;0;0;9.8];                                     % Gravity in fixed frame
-alpha=1/3;                                          % Constant to fix the convergence of algorithm    
+%% =======================================================
+% MODIFICATION 1: CHARGEMENT DE VOS DONNÉES CSV
+% =======================================================
 
-%%%%%%%%%%%%%%%%%%%%%%%
-% Measurements from IMU
-%%%%%%%%%%%%%%%%%%%%%%%
-M=dlmread('Z:\Cours E3\3A ASI\Mobile Robotics\ILS\ILS-algorithm\ILS algorithm\MT_cal_00302440_000.log','\t',0,1);
-% Output of accelerometer
-abx=M(:,1);
-aby=M(:,2);
-abz=M(:,3);
-% Output of magnetometer
-mbx=M(:,7);
-mby=M(:,8);
-mbz=M(:,9);
-% Reference quaternion  
-M=dlmread('Z:\Cours E3\3A ASI\Mobile Robotics\ILS\ILS-algorithm\ILS algorithm\MT_quat_00302440_000.log','\t',0,0);
-time=M(:,1);
-q0ref=M(:,2);
-q1ref=M(:,3);
-q2ref=M(:,4);
-q3ref=M(:,5);
+% Nous utilisons 'readtable' pour lire les CSV, ce qui gère bien les en-têtes
+% (J'utilise les fichiers "Statique" que vous avez fournis)
+try
+    accelTable = readtable('Z:\Cours E3\3A ASI\Mobile Robotics\ILS\Donee brute\Static-2025-11-05_15-02-57\Accelerometer.csv');
+    magTable = readtable('Z:\Cours E3\3A ASI\Mobile Robotics\ILS\Donee brute\Static-2025-11-05_15-02-57\Magnetometer.csv');
+catch
+    error('Assurez-vous que les fichiers CSV sont dans le même dossier que ce script.');
+end
 
-% Initial conditions
-q_chapeau=[1;0;0;0];  % Estimated quaternion
-qe=[1;0;0;0];         % Quaternion error
+% Extraire les données des tables.
+% D'après votre CSV, l'ordre des colonnes est time, seconds_elapsed, z, y, x
+% Nous devons faire attention à assigner le bon 'x' et 'z' !
 
-% First loop to modify the measurements
+% Données de l'accéléromètre
+time = accelTable.time; % Utiliser le temps de l'accéléromètre
+abx = accelTable.x;     % Colonne 'x'
+aby = accelTable.y;     % Colonne 'y'
+abz = accelTable.z;     % Colonne 'z'
+
+% Données du magnétomètre
+mbx = magTable.x;       % Colonne 'x'
+mby = magTable.y;       % Colonne 'y'
+mbz = magTable.z;       % Colonne 'z'
+
+% Vérifier que les données ont la même longueur
+if length(abx) ~= length(mbx)
+    error('Les fichiers d''accéléromètre et de magnétomètre n''ont pas le même nombre de lignes.');
+end
+
+% SUPPRESSION : Nous n'avons pas de fichier de référence, 
+% donc nous supprimons les lignes 'dlmread' pour 'q0ref', 'q1ref', etc.
+
+%% =======================================================
+% PARTIE 2: PARAMÈTRES ET ALGORITHME ILS (INCHANGÉ)
+% =======================================================
+mn=[0;0.5*cos(60*pi/180);0;0.5*sin(60*pi/180)];     % Champ magnétique dans le repère fixe
+an=[0;0;0;9.8];                                     % Gravité dans le repère fixe
+alpha=1/3;                                          % Constante de convergence   
+
+% Conditions initiales
+q_chapeau=[1;0;0;0];  % Quaternion estimé
+qe=[1;0;0;0];         % Erreur de quaternion
+
+% Boucle principale sur chaque point de mesure
 for k1=1:length(time)    
   
-    % Step 1
-    %****************************************
-    % Quaternion form related to acceleration
-    %****************************************
+    % Step 1: Mettre les mesures sous forme de quaternion (vecteur pur)
     ab=[0;abx(k1);aby(k1);abz(k1)];
-    %******************************************
-    % Quaternion form related to magnetic field
-    %******************************************
     mb=[0;mbx(k1);mby(k1);mbz(k1)];
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Second loop to run the Iterated Least Squares
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    for i=1:10  % I choose 10 as number of iterations
-    % Step 3 
-    % Estimated magnetic field in fixed frame
-    aux1=product_quaternion(q_chapeau,mb);
-    q_chapeau_conjugate=[q_chapeau(1);-q_chapeau(2);-q_chapeau(3);-q_chapeau(4)];
-    mn_chapeau=product_quaternion(aux1,q_chapeau_conjugate);
-    % Step 4
-    % Estimated acceleration in fixed frame
-    aux2=product_quaternion(q_chapeau,ab);
-    an_chapeau=product_quaternion(aux2,q_chapeau_conjugate);
-    % Step 5: Calculate error on magnetic field
-    delta_mn_chapeau=[mn(1)-mn_chapeau(1);mn(2)-mn_chapeau(2);mn(3)-mn_chapeau(3);mn(4)-mn_chapeau(4)];
-    delta_mn_chapeau=[delta_mn_chapeau(2);delta_mn_chapeau(3);delta_mn_chapeau(4)];
-    % Step 6: Calculate error on acceleration
-    delta_an_chapeau=[an(1)-an_chapeau(1);an(2)-an_chapeau(2);an(3)-an_chapeau(3);an(4)-an_chapeau(4)];
-    delta_an_chapeau=[delta_an_chapeau(2);delta_an_chapeau(3);delta_an_chapeau(4)];
-    % Step 7: Calculate the measurement error vector
-    z=[delta_mn_chapeau;delta_an_chapeau];
-    % Step 8: calculate observation matrix H
-    % First calculate cross product matrix based on real fixed vectors
-    mnx=[0 -mn(4) mn(3);mn(4) 0 -mn(2);-mn(3) mn(2) 0];
-    anx=[0 -an(4) an(3);an(4) 0 -an(2);-an(3) an(2) 0];
-    H=[-2*mnx;-2*anx];
-    % Step 9: Calculate pseudo-inverse
-    H_pseudo_inverse=inv(H'*H)*H';
-    % Step 10: Compute the quaternion error
-    q_e=alpha*H_pseudo_inverse*z;
-    q_e=[1;q_e(1);q_e(2);q_e(3)];
-    % Step 11: Update the quaternion estimate
-    q_chapeau=product_quaternion(q_e,q_chapeau);
-    % Normalization of quaternion to obtain unit quaternion
-    q_chapeau=q_chapeau*(1/norm(q_chapeau));
+    
+    % Boucle ILS (itérations pour la convergence)
+    for i=1:10  % 10 itérations par point de mesure
+        % Step 3: Estimer le champ magnétique dans le repère fixe
+        aux1=product_quaternion(q_chapeau,mb);
+        q_chapeau_conjugate=[q_chapeau(1);-q_chapeau(2);-q_chapeau(3);-q_chapeau(4)];
+        mn_chapeau=product_quaternion(aux1,q_chapeau_conjugate);
+        
+        % Step 4: Estimer l'accélération dans le repère fixe
+        aux2=product_quaternion(q_chapeau,ab);
+        an_chapeau=product_quaternion(aux2,q_chapeau_conjugate);
+        
+        % Step 5: Calculer l'erreur sur le champ magnétique (partie vectorielle)
+        delta_mn_chapeau=[mn(1)-mn_chapeau(1);mn(2)-mn_chapeau(2);mn(3)-mn_chapeau(3);mn(4)-mn_chapeau(4)];
+        delta_mn_chapeau=[delta_mn_chapeau(2);delta_mn_chapeau(3);delta_mn_chapeau(4)];
+        
+        % Step 6: Calculer l'erreur sur l'accélération (partie vectorielle)
+        delta_an_chapeau=[an(1)-an_chapeau(1);an(2)-an_chapeau(2);an(3)-an_chapeau(3);an(4)-an_chapeau(4)];
+        delta_an_chapeau=[delta_an_chapeau(2);delta_an_chapeau(3);delta_an_chapeau(4)];
+        
+        % Step 7: Vecteur d'erreur de mesure
+        z=[delta_mn_chapeau;delta_an_chapeau];
+        
+        % Step 8: Matrice d'observation H
+        mnx=[0 -mn(4) mn(3);mn(4) 0 -mn(2);-mn(3) mn(2) 0];
+        anx=[0 -an(4) an(3);an(4) 0 -an(2);-an(3) an(2) 0];
+        H=[-2*mnx;-2*anx];
+        
+        % Step 9: Pseudo-inverse
+        H_pseudo_inverse=inv(H'*H)*H';
+        
+        % Step 10: Calculer l'erreur de quaternion
+        q_e=alpha*H_pseudo_inverse*z;
+        q_e=[1;q_e(1);q_e(2);q_e(3)];
+        
+        % Step 11: Mettre à jour l'estimation du quaternion
+        q_chapeau=product_quaternion(q_e,q_chapeau);
+        q_chapeau=q_chapeau*(1/norm(q_chapeau)); % Normalisation
     end
-    % Step 12: Quaternion value after convergence
+    
+    % Step 12: Stocker la valeur convergée pour cet instant k1
     q0(k1)=q_chapeau(1);
     q1(k1)=q_chapeau(2);
     q2(k1)=q_chapeau(3);
     q3(k1)=q_chapeau(4); 
 end
 
-% Representation of reference and estimated attitude
+%% =======================================================
+% MODIFICATION 3: AFFICHAGE DES RÉSULTATS (sans référence)
+% =======================================================
+
+% Affichage de l'attitude estimée
 figure
 subplot(4,1,1)
-plot(time,q0ref,'r',time,q0,'b')
-axis([0 51.02 -1 1]) 
+plot(time, q0, 'b') % 'q0ref' est supprimé car nous ne l'avons pas
+axis([0 time(end) -1 1]) 
 ylabel('q_{0}');
-legend('Reference value','Estimated value by ILS')
-title('Quaternion determination by Iterated Least Squares')
+legend('Estimated value by ILS') % Légende mise à jour
+title('Quaternion determination by Iterated Least Squares (CSV Data)')
 grid
+
 subplot(4,1,2)
-plot(time,q1ref,'r',time,q1,'b')
-axis([0 51.02 -1 1])
+plot(time, q1, 'b') % 'q1ref' supprimé
+axis([0 time(end) -1 1])
 ylabel('q_{1}');
 grid
+
 subplot(4,1,3)
-plot(time,q2ref,'r',time,q2,'b')
-axis([0 51.02 -1 1])
+plot(time, q2, 'b') % 'q2ref' supprimé
+axis([0 time(end) -1 1])
 ylabel('q_{2}');
 grid
+
 subplot(4,1,4)
-plot(time,q3ref,'r',time,q3,'b')
-axis([0 51.02 -1 1]) 
+plot(time, q3, 'b') % 'q3ref' supprimé
+axis([0 time(end) -1 1]) 
 ylabel('q_{3}');
 xlabel('Time (sec)');
 grid
